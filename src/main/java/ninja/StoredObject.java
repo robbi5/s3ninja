@@ -8,6 +8,8 @@
 
 package ninja;
 
+import com.google.common.hash.Hashing;
+import com.google.common.io.Files;
 import org.odftoolkit.odfdom.type.DateTime;
 import sirius.kernel.nls.NLS;
 
@@ -17,6 +19,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -64,6 +67,23 @@ public class StoredObject {
      */
     public String getLastModified() {
         return NLS.toUserString(Instant.ofEpochMilli(file.lastModified()));
+    }
+
+    public String getLastModifiedISO8601() {
+        return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(Instant.ofEpochMilli(file.lastModified()));
+    }
+
+    /**
+     * Returns the MD5 hash of the object
+     *
+     * @return string MD5 hash
+     */
+    public String getMD5Hash() {
+        try {
+            return Files.hash(file, Hashing.md5()).toString();
+        } catch (IOException e) {
+            return "";
+        }
     }
 
     /**

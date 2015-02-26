@@ -70,7 +70,7 @@
     }
     @for(ninja.StoredObject obj : bucket.getObjects()) {
         <tr>
-            <td><a href="@prefix/s3/@bucket.getName()/@obj.getName()?noAuth=true">@obj.getName()</a><br /><span class="muted">@obj.getSize()</span><span class="muted pull-right">@obj.getLastModified()</span></td>
+            <td><a href="@prefix/@bucket.getName()/@obj.getName()?noAuth=true">@obj.getName()</a><br /><span class="muted">@obj.getSize()</span><span class="muted pull-right">@obj.getLastModified()</span></td>
             <td class="align-center span2"><a href="@prefix/ui/@bucket.getName()/@obj.getName()/delete" class="btn btn-danger">@i18n("NLS.delete")</a></td>
         </tr>
     }

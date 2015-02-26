@@ -26,6 +26,8 @@ import sirius.kernel.di.std.Part;
 import sirius.kernel.di.std.Register;
 import sirius.kernel.health.Exceptions;
 import sirius.kernel.health.HandledException;
+import sirius.kernel.xml.Attribute;
+import sirius.kernel.xml.XMLStructuredOutput;
 import sirius.web.controller.Controller;
 import sirius.web.controller.Routed;
 import sirius.web.http.Response;
@@ -40,6 +42,7 @@ import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -70,13 +73,13 @@ public class S3Controller implements Controller {
     /*
      * Computes the expected hash for the given request.
      */
-    private String computeHash(WebContext ctx, String pathPrefix) {
+    private String computeHash(WebContext ctx) {
         try {
             Matcher aws4Header = AWS_AUTH4_PATTERN.matcher(ctx.getHeader("Authorization"));
             if (aws4Header.matches()) {
                 return computeAWS4Hash(ctx, aws4Header);
             } else {
-                return computeAWSLegacyHash(ctx, pathPrefix);
+                return computeAWSLegacyHash(ctx);
             }
         } catch (Throwable e) {
             throw Exceptions.handle(UserContext.LOG, e);
@@ -86,7 +89,7 @@ public class S3Controller implements Controller {
     /*
      * Computes the "classic" authentication hash.
      */
-    private String computeAWSLegacyHash(WebContext ctx, String pathPrefix) throws Exception {
+    private String computeAWSLegacyHash(WebContext ctx) throws Exception {
         StringBuilder stringToSign = new StringBuilder(ctx.getRequest().getMethod().name());
         stringToSign.append("\n");
         stringToSign.append(ctx.getHeaderValue("Content-MD5").asString(""));
@@ -113,7 +116,7 @@ public class S3Controller implements Controller {
             stringToSign.append("\n");
         }
 
-        stringToSign.append(pathPrefix).append(ctx.getRequest().getUri().substring(3));
+        stringToSign.append(ctx.getRequest().getUri());
 
         SecretKeySpec keySpec = new SecretKeySpec(storage.getAwsSecretKey().getBytes(), "HmacSHA1");
         Mac mac = Mac.getInstance("HmacSHA1");
@@ -213,6 +216,28 @@ public class S3Controller implements Controller {
                 CallContext.getCurrent().getWatch());
     }
 
+    private static final Attribute AWS_XMLNS = Attribute.set("xmlns","http://s3.amazonaws.com/doc/2006-03-01");
+
+    @Routed("/")
+    public void listAllMyBuckets(WebContext ctx) {
+        List<Bucket> buckets = storage.getBuckets();
+        XMLStructuredOutput xso = ctx.respondWith().xml();
+
+        xso.beginOutput("ListAllMyBucketsResult", AWS_XMLNS, Attribute.set("comment", "Access /ui for User Interface"));
+        xso.beginObject("Owner").property("ID", "anonymous").property("DisplayName", null).endObject();
+        xso.beginObject("Buckets");
+        String time = "2006-02-03T16:45:09.000Z"; // fixed dummy date
+        for (Bucket b : buckets) {
+            if (b.isPrivate()) continue;
+            xso.beginObject("Bucket");
+            xso.property("Name", b.getName());
+            xso.property("CreationDate", time);
+            xso.endObject();
+        }
+        xso.endObject();
+        xso.endOutput();
+    }
+
     /**
      * Dispatching method handling all object specific calls.
      *
@@ -221,7 +246,7 @@ public class S3Controller implements Controller {
      * @param idList     name of the object ob interest
      * @throws Exception in case of IO errors and there like
      */
-    @Routed("/s3/:1/**")
+    @Routed("/:1/**")
     public void object(WebContext ctx, String bucketName, List<String> idList) throws Exception {
         Bucket bucket = storage.getBucket(bucketName);
         if (!bucket.exists()) {
@@ -237,8 +262,7 @@ public class S3Controller implements Controller {
             // if it's a request to the bucket, it's usually a bucket create command.
             // As we allow bucket creation, thus send a positive response
             if (ctx.getRequest().getMethod() == HttpMethod.HEAD || ctx.getRequest().getMethod() == HttpMethod.GET) {
-                signalObjectSuccess(ctx);
-                ctx.respondWith().status(HttpResponseStatus.OK);
+                getBucketListObjects(ctx, bucket);
                 return;
             }
 
@@ -246,9 +270,8 @@ public class S3Controller implements Controller {
         }
         String hash = getAuthHash(ctx);
         if (hash != null) {
-            String expectedHash = computeHash(ctx, "/s3");
-            String alternativeHash = computeHash(ctx, "");
-            if (!expectedHash.equals(hash) && !alternativeHash.equals(hash)) {
+            String expectedHash = computeHash(ctx);
+            if (!expectedHash.equals(hash)) {
                 ctx.respondWith()
                    .error(HttpResponseStatus.UNAUTHORIZED,
                           Strings.apply("Invalid Hash (Expected: %s, Found: %s)", expectedHash, hash));
@@ -408,11 +431,47 @@ public class S3Controller implements Controller {
         for (Map.Entry<Object, Object> entry : object.getProperties()) {
             response.addHeader(entry.getKey().toString(), entry.getValue().toString());
         }
+        response.addHeader("ETag", "\"" + object.getMD5Hash() + "\"");
         if (sendFile) {
             response.file(object.getFile());
         } else {
             response.status(HttpResponseStatus.OK);
         }
         signalObjectSuccess(ctx);
+    }
+
+    /**
+     * Handles GET /bucket
+     *
+     * @param ctx    the context describing the current request
+     * @param bucket the bucket containing the object to upload
+     */
+    private void getBucketListObjects(WebContext ctx, Bucket bucket) {
+        signalObjectSuccess(ctx);
+        List<StoredObject> objects = bucket.getObjects();
+        XMLStructuredOutput xso = ctx.respondWith().xml();
+
+        xso.beginOutput("ListBucketResult", AWS_XMLNS);
+        xso.property("Name", bucket.getName());
+        xso.property("Prefix", null);
+        xso.property("Marker", null);
+        xso.property("MaxKeys", objects.size());
+        xso.property("IsTruncated", false);
+
+        for (StoredObject object : objects) {
+            xso.beginObject("Contents");
+            xso.property("Key", object.getName());
+            xso.property("LastModified", object.getLastModifiedISO8601());
+            xso.property("ETag", "\"" + object.getMD5Hash() + "\"");
+            xso.property("Size", object.getFile().length());
+            xso.property("StorageClass", "STANDARD");
+            xso.beginObject("Owner")
+                    .property("ID", "anonymous")
+                    .property("DisplayName", null)
+                    .endObject();
+            xso.endObject();
+        }
+
+        xso.endOutput();
     }
 }

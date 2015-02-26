@@ -78,7 +78,7 @@ public class NinjaController implements Controller {
      *
      * @param ctx the context describing the current request
      */
-    @Routed("/")
+    @Routed("/ui")
     public void index(WebContext ctx) {
         if (ctx.isPOST() && ctx.get("bucketName").isFilled()) {
             storage.getBucket(ctx.get("bucketName").asString()).create();

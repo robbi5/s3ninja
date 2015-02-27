@@ -18,8 +18,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -70,7 +68,7 @@ public class StoredObject {
     }
 
     public String getLastModifiedISO8601() {
-        return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(Instant.ofEpochMilli(file.lastModified()));
+        return Instant.ofEpochMilli(file.lastModified()).toString();
     }
 
     /**

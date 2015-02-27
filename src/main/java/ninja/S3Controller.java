@@ -432,6 +432,7 @@ public class S3Controller implements Controller {
             response.addHeader(entry.getKey().toString(), entry.getValue().toString());
         }
         response.addHeader("ETag", "\"" + object.getMD5Hash() + "\"");
+        response.addHeader("Last-Modified", object.getLastModifiedRFC1123());
         if (sendFile) {
             response.file(object.getFile());
         } else {

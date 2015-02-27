@@ -18,6 +18,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -69,6 +72,12 @@ public class StoredObject {
 
     public String getLastModifiedISO8601() {
         return Instant.ofEpochMilli(file.lastModified()).toString();
+    }
+
+    public String getLastModifiedRFC1123() {
+        Instant inst = Instant.ofEpochMilli(file.lastModified());
+        ZonedDateTime zdt = ZonedDateTime.ofInstant(inst, ZoneId.systemDefault());
+        return DateTimeFormatter.RFC_1123_DATE_TIME.format(zdt);
     }
 
     /**

@@ -217,6 +217,7 @@ public class S3Controller implements Controller {
     }
 
     private static final Attribute AWS_XMLNS = Attribute.set("xmlns","http://s3.amazonaws.com/doc/2006-03-01");
+    private static final Attribute XSI_XMLNS = Attribute.set("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
 
     @Routed("/")
     public void listAllMyBuckets(WebContext ctx) {
@@ -291,7 +292,11 @@ public class S3Controller implements Controller {
             return;
         }
         if (ctx.getRequest().getMethod() == HttpMethod.GET) {
-            getObject(ctx, bucket, id, true);
+            if (ctx.hasParameter("acl")) {
+                getACL(ctx, bucket, id);
+            } else {
+                getObject(ctx, bucket, id, true);
+            }
         } else if (ctx.getRequest().getMethod() == HttpMethod.PUT) {
             Value copy = ctx.getHeaderValue("x-amz-copy-source");
             if (copy.isFilled()) {
@@ -439,6 +444,48 @@ public class S3Controller implements Controller {
             response.status(HttpResponseStatus.OK);
         }
         signalObjectSuccess(ctx);
+    }
+
+    /**
+     * Handles GET /bucket/id?acl
+     *
+     * @param ctx    the context describing the current request
+     * @param bucket the bucket containing the object
+     * @param id     name of the object
+     */
+    private void getACL(WebContext ctx, Bucket bucket, String id) {
+        StoredObject object = bucket.getObject(id);
+        if (!object.exists()) {
+            signalObjectError(ctx, HttpResponseStatus.NOT_FOUND, "Object does not exist");
+            return;
+        }
+
+        signalObjectSuccess(ctx);
+        XMLStructuredOutput xso = ctx.respondWith().xml();
+        xso.beginOutput("AccessControlPolicy", AWS_XMLNS);
+        xso.beginObject("Owner")
+            .property("ID", "anonymous")
+            .property("DisplayName", null)
+            .endObject();
+        xso.beginObject("AccessControlList");
+        if (bucket.isPrivate()) {
+            xso.beginObject("Grant")
+                .beginObject("Grantee", XSI_XMLNS, Attribute.set("xsi:type", "CanonicalUser"))
+                    .property("ID", "anonymous")
+                    .property("DisplayName", null)
+                    .endObject()
+                .property("Permission", "FULL_CONTROL")
+                .endObject();
+        } else {
+            xso.beginObject("Grant")
+                .beginObject("Grantee", XSI_XMLNS, Attribute.set("xsi:type", "Group"))
+                    .property("URI", "http://acs.amazonaws.com/groups/global/AllUsers")
+                    .endObject()
+                .property("Permission", "READ")
+                .endObject();
+        }
+        xso.endObject();
+        xso.endOutput();
     }
 
     /**

@@ -74,11 +74,11 @@ public class NinjaController implements Controller {
     private APILog log;
 
     /**
-     * Handles requests to /
+     * Handles requests to /ui
      *
      * @param ctx the context describing the current request
      */
-    @Routed("/ui")
+    @Routed(value = "/ui", priority = PriorityCollector.DEFAULT_PRIORITY - 5)
     public void index(WebContext ctx) {
         if (ctx.isPOST() && ctx.get("bucketName").isFilled()) {
             storage.getBucket(ctx.get("bucketName").asString()).create();

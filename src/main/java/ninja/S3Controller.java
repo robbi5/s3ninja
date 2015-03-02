@@ -249,6 +249,9 @@ public class S3Controller implements Controller {
      */
     @Routed("/:1/**")
     public void object(WebContext ctx, String bucketName, List<String> idList) throws Exception {
+        if (ctx.getRequest().getUri().startsWith("/ui")) {
+            return;
+        }
         Bucket bucket = storage.getBucket(bucketName);
         if (!bucket.exists()) {
             if (storage.isAutocreateBuckets()) {

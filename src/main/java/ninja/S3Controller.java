@@ -311,6 +311,8 @@ public class S3Controller implements Controller {
             deleteObject(ctx, bucket, id);
         } else if (ctx.getRequest().getMethod() == HttpMethod.HEAD) {
             getObject(ctx, bucket, id, false);
+        } else if (ctx.getRequest().getMethod() == HttpMethod.OPTIONS) {
+            answerCORSPreflight(ctx);
         } else {
             throw new IllegalArgumentException(ctx.getRequest().getMethod().name());
         }
@@ -380,7 +382,7 @@ public class S3Controller implements Controller {
         }
 
         object.storeProperties(properties);
-        String etag = hash.toString();
+        String etag = "\"" + hash.toString() + "\"";
         ctx.respondWith().addHeader(HttpHeaders.Names.ETAG, etag).status(HttpResponseStatus.OK);
         signalObjectSuccess(ctx);
     }
@@ -439,13 +441,36 @@ public class S3Controller implements Controller {
         for (Map.Entry<Object, Object> entry : object.getProperties()) {
             response.addHeader(entry.getKey().toString(), entry.getValue().toString());
         }
-        response.addHeader("ETag", "\"" + object.getMD5Hash() + "\"");
-        response.addHeader("Last-Modified", object.getLastModifiedRFC1123());
+        response.addHeader(HttpHeaders.Names.ETAG, "\"" + object.getMD5Hash() + "\"");
+        response.addHeader(HttpHeaders.Names.LAST_MODIFIED, object.getLastModifiedRFC1123());
+        addCORSHeader(response);
         if (sendFile) {
             response.file(object.getFile());
         } else {
             response.status(HttpResponseStatus.OK);
         }
+        signalObjectSuccess(ctx);
+    }
+
+    private void addCORSHeader(Response response) {
+        response.addHeader(HttpHeaders.Names.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
+        response.addHeader(HttpHeaders.Names.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true");
+    }
+
+    /**
+     * Handles OPTIONS /bucket(/id)
+     *
+     * @param ctx    the context describing the current request
+     */
+    private void answerCORSPreflight(WebContext ctx) {
+        Response response = ctx.respondWith();
+        addCORSHeader(response);
+        response.addHeader(HttpHeaders.Names.ACCESS_CONTROL_ALLOW_METHODS,
+                "GET, PUT, DELETE, HEAD, OPTIONS");
+        response.addHeader(HttpHeaders.Names.ACCESS_CONTROL_ALLOW_HEADERS,
+                "Authorization,Content-Type,Accept,Accept-Ranges,Range," +
+                "Origin,Cache-Control,If-Modified-Since");
+        response.status(HttpResponseStatus.NO_CONTENT);
         signalObjectSuccess(ctx);
     }
 
